@@ -172,11 +172,6 @@ public class ReservationController {
         return ResponseEntity.ok(responseDTO);
     }
 
-    @GetMapping("success")
-    public void success(Model model) {
-
-    }
-
     @PostMapping("check")
     public ResponseEntity<?> checkReservation(@RequestBody ReservationDTO reservationDTO, ResponseDTO responseDTO) { // 로그인 하지 않은 사람의 예약내역 조회
 

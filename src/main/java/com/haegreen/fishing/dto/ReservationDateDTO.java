@@ -18,6 +18,8 @@ public class ReservationDateDTO {
     private Long rdate;
 
     private LocalDate regDate;
+    private LocalDate startDate;
+    private LocalDate endDate;
 
     private boolean available; // 예약 가능 여부 true : 예약 가능
 

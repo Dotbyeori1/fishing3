@@ -16,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.text.NumberFormat;
 import java.time.LocalDate;
@@ -36,7 +35,7 @@ public class AdminController {
     private final ReservationRepository reservationRepository;
     private final ReservationDateRepository reservationDateRepository;
 
-    public String numberFormet(int money) {
+    public String numberFormat(int money) {
         NumberFormat formatter = NumberFormat.getInstance();
         return formatter.format(money);
     }
@@ -66,12 +65,12 @@ public class AdminController {
         }
     }
 
-    @GetMapping("reservationlist")
+    @GetMapping("reservationList")
     public ResponseEntity<?> list(@RequestParam(value = "regDate") LocalDate regDate, Map<String, Object> dataMap) {
         List<ReservationDTO> reservationDTOS = reservationService.getDateUserReservation(regDate);
         int confirmMember = 0;
         for (ReservationDTO r : reservationDTOS) {
-            r.setFormatMoney(numberFormet(r.getMoney()));
+            r.setFormatMoney(numberFormat(r.getMoney()));
             if (r.isState())
                 confirmMember += r.getMember();
         }
@@ -88,8 +87,8 @@ public class AdminController {
         return ResponseEntity.ok(dataMap);
     }
 
-    @GetMapping("searchlist")
-    public String getSearchlist(PageRequestDTO pageRequestDTO, ReservationDTO reservationDTO, Model model) {
+    @GetMapping("searchList")
+    public ResponseEntity<?> getSearchList(PageRequestDTO pageRequestDTO, ReservationDTO reservationDTO) {
         pageRequestDTO.setSize(15);
         PageResultDTO<ReservationDTO, Object[]> reservation = reservationService.getSearchList(pageRequestDTO, reservationDTO.getRvno(), reservationDTO.getRegName(), reservationDTO
                 .getDepositName(), reservationDTO.getTel(), reservationDTO.getRegDate());
@@ -97,7 +96,7 @@ public class AdminController {
         int confirmMember = 0;
         int extras = 0;
         for (ReservationDTO r : reservation.getDtoList()) {
-            r.setFormatMoney(numberFormet(r.getMoney()));
+            r.setFormatMoney(numberFormat(r.getMoney()));
             if (r.isState())
                 confirmMember += r.getMember();
             extras = r.getExtraMembers() - confirmMember;
@@ -106,14 +105,15 @@ public class AdminController {
         if (reservation.getTotalPage() == 0)
             reservation.setTotalPage(1);
 
-        model.addAttribute("extras", extras);
-        model.addAttribute("confirmMember", confirmMember);
-        model.addAttribute("result", reservation);
-        return "admin/searchlist";
+        Map<String, Object> dataMap = new HashMap<>();
+        dataMap.put("extras", extras);
+        dataMap.put("confirmMember", confirmMember);
+        dataMap.put("result", reservation);
+        return ResponseEntity.ok(dataMap);
     }
 
     @PostMapping("register")
-    public ResponseEntity<Map<String, Object>> register(ReservationDTO dto) {
+    public ResponseEntity<Map<String, Object>> register(@RequestBody ReservationDTO dto) {
         String tel = dto.getTel1() + "-" + dto.getTel2() + "-" + dto.getTel3();
         dto.setTel(tel);
         Long rvno = reservationService.register(dto);
@@ -123,7 +123,7 @@ public class AdminController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @PostMapping("reservationstate")
+    @PostMapping("reservationState")
     public ResponseEntity<?> modifyState(@RequestBody ReservationDTO reservationDTO) {
         ResponseDTO responseDTO = new ResponseDTO();
         Optional<Reservation> reservation = reservationService.modifyState(reservationDTO.getRvno(), reservationDTO);
@@ -139,36 +139,18 @@ public class AdminController {
         return new ResponseEntity<>(responseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    @GetMapping("modifydate")
-    public String List(ReservationDateDTO reservationDateDTO, Model model) {
-        if (reservationDateDTO.getRegDate() == null)
-            reservationDateDTO.setRegDate(LocalDate.now());
-        reservationDateDTO = reservationDateService.getReservationDate(reservationDateDTO.getRegDate());
-        model.addAttribute("reservationDateDTO", reservationDateDTO);
-        return "admin/modifydate";
-    }
-
-    @PostMapping("modifyavailable")
-    public String modifyAvailable(ReservationDateDTO reservationDateDTO, RedirectAttributes redirectAttributes) {
-        boolean isModified = reservationDateService.modifyDateAvailable(reservationDateDTO.getRdate(), reservationDateDTO);
-        if (isModified)
-            return "redirect:/admin/modifydate";
-        redirectAttributes.addFlashAttribute("message", "변경에 실패하였습니다.");
-        return "redirect:/admin/modifydate";
-    }
-
     @GetMapping("reservationInfo")
-    public String reservationInfo(@RequestParam("rvno") Long rvno, @RequestParam("search") boolean search, Model model, @ModelAttribute("message") String message) {
-        model.addAttribute("message", message);
+    public ResponseEntity<?> reservationInfo(@RequestParam("rvno") Long rvno) {
         ReservationDTO reservationDTO = reservationService.get(rvno);
-        reservationDTO.setFormatMoney(numberFormet(reservationDTO.getMoney()));
-        model.addAttribute("reservationDTO", reservationDTO);
-        model.addAttribute("search", Boolean.valueOf(search));
-        return "admin/reservationInfo";
+        reservationDTO.setFormatMoney(numberFormat(reservationDTO.getMoney()));
+
+        Map<String, Object> dataMap = new HashMap<>();
+        dataMap.put("reservationDTO", reservationDTO);
+        return ResponseEntity.ok(dataMap);
     }
 
-    @GetMapping("changeregdate")
-    public ResponseEntity<?> changeregDate(@RequestParam("regDate") LocalDate regDate){
+    @GetMapping("changeDate")
+    public ResponseEntity<?> changeDate(@RequestParam("regDate") LocalDate regDate){
 
         Integer confirmedMembers = reservationRepository.findConfirmedReservationsOnDate(regDate);
         int extras = 16 - (confirmedMembers != null ? confirmedMembers : 0);
@@ -178,47 +160,67 @@ public class AdminController {
     }
 
     @GetMapping("reservationModify")
-    public String showReservationModifyForm(@RequestParam("rvno") Long rvno, @RequestParam("search") Boolean search, Model model) {
+    public ResponseEntity<?> showReservationModifyForm(@RequestParam("rvno") Long rvno) {
         ReservationDTO reservationDTO = reservationService.get(rvno);
         ReservationDate reservationDate = reservationDateRepository.findReservationDateByRegDate(reservationDTO.getRegDate());
         Integer confirmedMembers = reservationRepository.findConfirmedReservationsOnDate(reservationDTO.getRegDate());
         int extras = reservationDate.getExtrasMembers() - (confirmedMembers != null ? confirmedMembers : 0);
         extras += reservationDTO.getMember();
-        model.addAttribute("extras", extras);
+
+        Map<String, Object> dataMap = new HashMap<>();
+        dataMap.put("extras", extras);
         String[] parts = reservationDTO.getTel().split("-");
         reservationDTO.setTel1(parts[0]);
         reservationDTO.setTel2(parts[1]);
         reservationDTO.setTel3(parts[2]);
-        model.addAttribute("reservationDTO", reservationDTO);
-        model.addAttribute("search", search);
-        return "admin/reservationModify";
+        dataMap.put("reservationDTO", reservationDTO);
+        return ResponseEntity.ok(dataMap);
     }
 
-    @PostMapping("moneychange")
+    @GetMapping("getDateState")
+    public ResponseEntity<?> List(@RequestParam("regDate") LocalDate regDate) {
+        ReservationDateDTO reservationDateDTO = reservationDateService.getReservationDate(regDate);
+
+        Map<String, Object> dataMap = new HashMap<>();
+        dataMap.put("reservationDateDTO", reservationDateDTO);
+        return ResponseEntity.ok(dataMap);
+    }
+
+    @PostMapping("modifyDateState")
+    public ResponseEntity<?> modifyAvailable(ReservationDateDTO reservationDateDTO) {
+        ResponseDTO responseDTO = new ResponseDTO();
+        boolean isModified = reservationDateService.modifyDateAvailable(reservationDateDTO.getRdate(), reservationDateDTO);
+        if (isModified) {
+            responseDTO.setSuccess("변경 되었습니다.");
+            return ResponseEntity.ok(responseDTO);
+        }
+        responseDTO.setError("변경에 실패하였습니다.");
+        return ResponseEntity.badRequest().body(responseDTO);
+    }
+
+    @PostMapping("moneyChange")
     public ResponseEntity<?> moneyChange(ReservationDTO reservationDTO) {
         ResponseDTO responseDTO = new ResponseDTO();
         if (reservationService.modifyMoney(reservationDTO)) {
             responseDTO.setSuccess("입금금액이 수정되었습니다.");
-            return new ResponseEntity(responseDTO, HttpStatus.OK);
+            return new ResponseEntity<>(responseDTO, HttpStatus.OK);
         }
         responseDTO.setError("수정 실패");
-        return new ResponseEntity(responseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+        return new ResponseEntity<>(responseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @PostMapping("reservationModify")
-    public String reservationModify(ReservationDTO reservationDTO, RedirectAttributes redirectAttributes, @RequestParam("search") boolean search,
-                                    @RequestParam String tel1, @RequestParam String tel2, @RequestParam String tel3) {
-        String tel = tel1 + "-" + tel2 + "-" + tel3;
+    public ResponseEntity<?> reservationModify(@RequestBody  ReservationDTO reservationDTO) {
+        String tel = reservationDTO.getTel1() + "-" + reservationDTO.getTel2() + "-" + reservationDTO.getTel3();
         reservationDTO.setTel(tel);
         reservationService.modify(reservationDTO);
-        redirectAttributes.addFlashAttribute("message", "수정이 되었습니다.");
-        return "redirect:/admin/reservationInfo?search=" + search + "&rvno=" + reservationDTO.getRvno();
+        return ResponseEntity.ok("수정이 되었습니다.");
     }
 
     @PostMapping("reservationDelete")
-    public ResponseEntity<?> reservationDelete(@RequestParam("rvno") Long rvno) {
+    public ResponseEntity<?> reservationDelete(@RequestBody ReservationDTO reservationDTO) {
         ResponseDTO responseDTO = new ResponseDTO();
-        if (reservationService.remove(rvno)) {
+        if (reservationService.remove(reservationDTO.getRvno())) {
             responseDTO.setSuccess("삭제 성공");
             return new ResponseEntity<>(responseDTO, HttpStatus.OK);
         }
@@ -226,33 +228,21 @@ public class AdminController {
         return new ResponseEntity<>(responseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    @GetMapping("modifysort")
-    public String modifySortsGet(Model model, ReservationDateDTO reservationDateDTO){
-        LocalDate startDate = LocalDate.now();
-        LocalDate endDate = LocalDate.now().plusDays(1);
-        model.addAttribute("startDate", startDate);
-        model.addAttribute("endDate", endDate);
-
-        if(reservationDateDTO.getRegDate()==null){
-            reservationDateDTO.setRegDate(LocalDate.now());
-        }
+    @GetMapping("modifySort")
+    public ResponseEntity<?> modifySortsGet(Model model, ReservationDateDTO reservationDateDTO){
         reservationDateDTO = reservationDateService.getReservationDate(reservationDateDTO.getRegDate());
-        model.addAttribute("reservationDateDTO", reservationDateDTO);
-        return "admin/modfiysort";
+
+        Map<String, Object> dataMap = new HashMap<>();
+        dataMap.put("reservationDateDTO", reservationDateDTO);
+        return ResponseEntity.ok(dataMap);
     }
 
-    @GetMapping("modifysort2") //  선택 날짜 갱신용
-    public ResponseEntity<?> modifySortsGet2(@RequestParam("regDate") LocalDate regDate){
-        ReservationDateDTO reservationDateDTO = reservationDateService.getReservationDate(regDate);
-        return new ResponseEntity<>(reservationDateDTO, HttpStatus.OK);
-    }
-
-    @PostMapping("modifysort")
-    public ResponseEntity<ResponseDTO> modifySortsPost(ReservationDateDTO reservationDateDTO,
-            @RequestParam(name="startDate")  LocalDate startDate,
-            @RequestParam(name="endDate")  LocalDate endDate) {
+    @PostMapping("modifySort")
+    public ResponseEntity<ResponseDTO> modifySortsPost(@RequestBody ReservationDateDTO reservationDateDTO) {
 
         ResponseDTO responseDTO = new ResponseDTO();
+        LocalDate startDate = reservationDateDTO.getStartDate();
+        LocalDate endDate = reservationDateDTO.getEndDate();
 
         if (startDate == null || endDate == null) {
             responseDTO.setError("시작날짜와 종료날짜를 모두 입력해주세요.");
@@ -269,11 +259,6 @@ public class AdminController {
             return new ResponseEntity<>(responseDTO, HttpStatus.BAD_REQUEST);
         }
 
-        if (reservationDateDTO.getFishingMoney() == null) {
-            responseDTO.setError("금액을 입력해주세요.");
-            return new ResponseEntity<>(responseDTO, HttpStatus.BAD_REQUEST);
-        }
-
         if (reservationDateService.modifySorts(startDate, endDate, reservationDateDTO.getFishingSort(),
                 reservationDateDTO.getExtrasMembers(), reservationDateDTO.getFishingMoney())) {
             responseDTO.setSuccess("적용되었습니다. 예약현황보기로 이동 하시겠습니까?");
@@ -284,8 +269,8 @@ public class AdminController {
         }
     }
 
-    @PostMapping("modifysort2")
-    public ResponseEntity<ResponseDTO> modifySortPost(ReservationDateDTO reservationDateDTO) {
+    @PostMapping("modifySort2")
+    public ResponseEntity<ResponseDTO> modifySortPost(@RequestBody ReservationDateDTO reservationDateDTO) {
 
         ResponseDTO responseDTO = new ResponseDTO();
 
@@ -299,10 +284,6 @@ public class AdminController {
             return new ResponseEntity<>(responseDTO, HttpStatus.BAD_REQUEST);
         }
 
-        if (reservationDateDTO.getFishingMoney() == null) {
-            responseDTO.setError("금액을 입력해주세요.");
-            return new ResponseEntity<>(responseDTO, HttpStatus.BAD_REQUEST);
-        }
 
         if (reservationDateService.modifySort(reservationDateDTO.getRdate(), reservationDateDTO)) {
             responseDTO.setSuccess("적용되었습니다.");
